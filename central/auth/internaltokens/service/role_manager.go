@@ -7,8 +7,8 @@ import (
 	roleDS "github.com/stackrox/rox/central/role/datastore"
 	v1 "github.com/stackrox/rox/generated/internalapi/central/v1"
 	"github.com/stackrox/rox/generated/storage"
+	permissionsUtils "github.com/stackrox/rox/pkg/auth/permissions/utils"
 	"github.com/stackrox/rox/pkg/auth/tokens"
-	"github.com/stackrox/rox/pkg/centralproxy"
 	"github.com/stackrox/rox/pkg/errox"
 )
 
@@ -20,26 +20,12 @@ type roleManager struct {
 	roleStore roleDS.DataStore
 }
 
-func validateSensorMetricsRole(role *tokens.InternalRole) error {
-	for access := range role.Permissions {
-		if access != storage.Access_NO_ACCESS && access != storage.Access_READ_ACCESS {
-			return errox.InvalidArgs.New("Sensor metrics permission set grants non-read-only access")
-		}
-	}
-	return nil
-}
-
 func (rm *roleManager) createRoleFromPermissionSets(
 	ctx context.Context, req *v1.GenerateTokenForPermissionsAndScopeRequest,
 ) (*tokens.InternalRole, error) {
 	role, err := rm.createSensorRole(ctx, req)
 	if err != nil {
 		return nil, err
-	}
-	if slices.Contains(req.GetPermissionSetNames(), centralproxy.MetricsPermissionSetName) {
-		if err := validateSensorMetricsRole(role); err != nil {
-			return nil, err
-		}
 	}
 	return role, nil
 }
@@ -69,6 +55,11 @@ func (rm *roleManager) createSensorRole(
 	permissionSets, err := rm.getPermissionSetsByNames(ctx, permissionSetNames)
 	if err != nil {
 		return nil, err
+	}
+	for _, permissionSet := range permissionSets {
+		if err := permissionsUtils.ValidateScopedReadOnlyPermissions(permissionSet.GetResourceToAccess()); err != nil {
+			return nil, errox.InvalidArgs.Newf("Sensor proxy permission set %q: %v", permissionSet.GetName(), err)
+		}
 	}
 	return &tokens.InternalRole{
 		RoleName:    internalRoleName,

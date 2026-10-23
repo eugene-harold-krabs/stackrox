@@ -39,8 +39,8 @@ func newTokenPolicy(maxLifetime time.Duration, allowedPermissions map[string]v1.
 }
 
 // defaultTokenPolicy validates explicit permission requests from Sensors that do
-// not select a Central-managed permission set. Console requests use the managed
-// permission set instead when selected.
+// not select a Central-managed permission set. Permission-set requests use
+// Central-managed permissions instead.
 // This policy caps lifetime to 1 hour and should remain compatible with the
 // OCP console plugin.
 func defaultTokenPolicy() *tokenPolicy {
@@ -123,96 +123,84 @@ func (p *tokenPolicy) validateSensorIdentity(ctx context.Context) (string, error
 	return identity.Service().GetId(), nil
 }
 
-// enforce validates the request against all policy checks and returns the
-// request with a capped lifetime if necessary.
+// enforce validates the request and returns its HTTP scopes alongside
+// the request with a capped lifetime if necessary.
 func (p *tokenPolicy) enforce(
 	ctx context.Context,
 	req *v1.GenerateTokenForPermissionsAndScopeRequest,
-) (*v1.GenerateTokenForPermissionsAndScopeRequest, error) {
+) (*v1.GenerateTokenForPermissionsAndScopeRequest, tokens.HTTPRequestScopes, error) {
 	sensorClusterID, err := p.validateSensorIdentity(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if sensorClusterID == "" {
-		return nil, errox.NotAuthorized.New("sensor cluster ID is missing")
+		return nil, nil, errox.NotAuthorized.New("sensor cluster ID is missing")
 	}
-	if len(req.GetPermissionSetNames()) > 0 {
-		for _, permissionSetName := range req.GetPermissionSetNames() {
-			switch permissionSetName {
+	scopes, err := tokens.HTTPRequestScopesFromProto(req.GetHttpRequestScopes())
+	if err != nil {
+		return nil, nil, errox.InvalidArgs.CausedBy(err)
+	}
+	permissionSets := req.GetPermissionSetNames()
+	if len(permissionSets) > 0 {
+		if slices.Contains(permissionSets, centralproxy.MetricsPermissionSetName) && len(permissionSets) != 1 {
+			return nil, nil, errox.InvalidArgs.New("metrics permission set cannot be combined with other permission sets")
+		}
+		for _, permissionSet := range permissionSets {
+			switch permissionSet {
 			case centralproxy.MetricsPermissionSetName:
 				if len(req.GetClusterScopes()) != 1 ||
 					req.GetClusterScopes()[0].GetClusterId() != sensorClusterID ||
 					!req.GetClusterScopes()[0].GetFullClusterAccess() ||
 					len(req.GetClusterScopes()[0].GetNamespaces()) != 0 {
-					return nil, errox.InvalidArgs.New("metrics permission set requests require full access to the Sensor's cluster")
+					return nil, nil, errox.InvalidArgs.New("metrics permission set requests require full access to the Sensor's cluster")
 				}
 			case centralproxy.ConsoleProxyPermissionSetName:
 				if err := p.validateClusterScope(req.GetClusterScopes(), sensorClusterID); err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 			default:
-				return nil, errox.InvalidArgs.New("unsupported Sensor proxy permission set")
-			}
-		}
-		if _, err := approvedHTTPScopes(req); err != nil {
-			return nil, err
-		}
-		return p.enforceLifetimeLimit(req)
-	}
-	if err := p.validatePermissions(req.GetPermissions()); err != nil {
-		return nil, err
-	}
-	if _, err := tokens.HTTPRequestScopesFromProto(req.GetHttpRequestScopes()); err != nil {
-		return nil, errox.InvalidArgs.CausedBy(err)
-	}
-	if err := p.validateClusterScope(req.GetClusterScopes(), sensorClusterID); err != nil {
-		return nil, err
-	}
-	return p.enforceLifetimeLimit(req)
-}
-
-func approvedHTTPScopes(req *v1.GenerateTokenForPermissionsAndScopeRequest) (tokens.HTTPRequestScopes, error) {
-	allowed := make(tokens.HTTPRequestScopes)
-	for _, permissionSetName := range req.GetPermissionSetNames() {
-		var scopes tokens.HTTPRequestScopes
-		switch permissionSetName {
-		case centralproxy.ConsoleProxyPermissionSetName:
-			scopes = centralproxy.ConsoleHTTPScopes
-		case centralproxy.MetricsPermissionSetName:
-			scopes = centralproxy.MetricsHTTPScopes
-		default:
-			return nil, errox.InvalidArgs.New("unsupported Sensor proxy permission set")
-		}
-		for path, methods := range scopes {
-			for _, method := range methods {
-				if !slices.Contains(allowed[path], method) {
-					allowed[path] = append(allowed[path], method)
+				if len(req.GetClusterScopes()) == 0 {
+					return nil, nil, errox.InvalidArgs.New("generic Sensor proxy tokens require a cluster scope")
+				}
+				if err := p.validateClusterScope(req.GetClusterScopes(), sensorClusterID); err != nil {
+					return nil, nil, err
 				}
 			}
-			if _, exists := allowed[path]; !exists {
-				allowed[path] = []string{}
+		}
+		if len(scopes) == 0 && len(permissionSets) == 1 {
+			switch permissionSets[0] {
+			case centralproxy.ConsoleProxyPermissionSetName:
+				scopes = centralproxy.ConsoleHTTPScopes
+			case centralproxy.MetricsPermissionSetName:
+				scopes = centralproxy.MetricsHTTPScopes
 			}
 		}
+		if permissionSets[0] == centralproxy.MetricsPermissionSetName {
+			if len(scopes) != 1 || !slices.Equal(scopes["/metrics"], centralproxy.MetricsHTTPScopes["/metrics"]) {
+				return nil, nil, errox.InvalidArgs.New("metrics permission set tokens may only access GET /metrics")
+			}
+		}
+		hasMethod := false
+		for _, methods := range scopes {
+			if len(methods) > 0 {
+				hasMethod = true
+				break
+			}
+		}
+		if !hasMethod {
+			return nil, nil, errox.InvalidArgs.New("Sensor proxy tokens require an HTTP method scope")
+		}
+	} else {
+		if err := p.validatePermissions(req.GetPermissions()); err != nil {
+			return nil, nil, err
+		}
+		if err := p.validateClusterScope(req.GetClusterScopes(), sensorClusterID); err != nil {
+			return nil, nil, err
+		}
 	}
-
-	requested, err := tokens.HTTPRequestScopesFromProto(req.GetHttpRequestScopes())
+	req, err = p.enforceLifetimeLimit(req)
 	if err != nil {
-		return nil, errox.InvalidArgs.CausedBy(err)
+		return nil, nil, err
 	}
-	// Permission-set requests without HTTP scopes receive the full Central-managed profile.
-	if len(requested) == 0 {
-		return allowed, nil
-	}
-	for path, methods := range requested {
-		permitted, found := allowed[path]
-		if !found {
-			return nil, errox.InvalidArgs.New("requested HTTP scope exceeds Central's profile")
-		}
-		for _, method := range methods {
-			if !slices.Contains(permitted, method) {
-				return nil, errox.InvalidArgs.New("requested HTTP scope exceeds Central's profile")
-			}
-		}
-	}
-	return requested, nil
+	return req, scopes, nil
 }
