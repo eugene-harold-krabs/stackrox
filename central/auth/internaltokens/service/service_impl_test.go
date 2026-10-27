@@ -260,6 +260,7 @@ func TestGenerateTokenForPermissionsAndScope(t *testing.T) {
 			input: &v1.GenerateTokenForPermissionsAndScopeRequest{
 				PermissionSetNames: []string{centralproxy.MetricsPermissionSetName},
 				ClusterScopes:      []*v1.ClusterScope{{ClusterId: fixtureconsts.Cluster1, FullClusterAccess: true}},
+				HttpRequestScopes:  []*apiV1.HTTPRequestScope{{Path: "/metrics", Methods: []string{"GET"}}},
 				Permissions:        map[string]v1.Access{"Image": v1.Access_READ_WRITE_ACCESS},
 				Lifetime:           testExpirationDuration,
 			},
@@ -294,6 +295,7 @@ func TestGenerateTokenForPermissionsAndScope(t *testing.T) {
 				PermissionSetNames: []string{centralproxy.ConsoleProxyPermissionSetName},
 				Permissions:        map[string]v1.Access{"Deployment": v1.Access_READ_WRITE_ACCESS},
 				ClusterScopes:      []*v1.ClusterScope{requestSingleNamespace},
+				HttpRequestScopes:  []*apiV1.HTTPRequestScope{{Path: "/v1/metadata", Methods: []string{"GET"}}},
 				Lifetime:           testExpirationDuration,
 			},
 			policy: permissivePolicy,
@@ -304,12 +306,12 @@ func TestGenerateTokenForPermissionsAndScope(t *testing.T) {
 						assert.True(t, hasDeadline)
 						assert.True(t, filter(&storage.PermissionSet{Name: centralproxy.ConsoleProxyPermissionSetName}))
 						return []*storage.PermissionSet{{
+							Id:   "administrator-created-id",
 							Name: centralproxy.ConsoleProxyPermissionSetName,
 							ResourceToAccess: map[string]storage.Access{
 								"Deployment": storage.Access_READ_ACCESS,
 								"Image":      storage.Access_READ_ACCESS,
 							},
-							Traits: &storage.Traits{Origin: storage.Traits_DEFAULT},
 						}}, nil
 					})
 				mocks.issuer.EXPECT().Issue(gomock.Any(), tokens.RoxClaims{
@@ -322,7 +324,7 @@ func TestGenerateTokenForPermissionsAndScope(t *testing.T) {
 					}},
 					Name: fmt.Sprintf(claimNameFormat, internalRoleName,
 						testTokenExpiry.Format(time.RFC3339Nano)),
-					HTTPRequestScopes: centralproxy.ConsoleHTTPScopes,
+					HTTPRequestScopes: tokens.HTTPRequestScopes{"/v1/metadata": {"GET"}},
 				}, gomock.Any()).Return(&tokens.TokenInfo{Token: "console-token"}, nil)
 			},
 			expectedRsp: &v1.GenerateTokenForPermissionsAndScopeResponse{Token: "console-token"},
@@ -625,6 +627,7 @@ func TestGenerateTokenForPermissionsAndScopeRejectsWritableMetricsPermissionSet(
 		&v1.GenerateTokenForPermissionsAndScopeRequest{
 			PermissionSetNames: []string{centralproxy.MetricsPermissionSetName},
 			ClusterScopes:      []*v1.ClusterScope{{ClusterId: fixtureconsts.Cluster1, FullClusterAccess: true}},
+			HttpRequestScopes:  []*apiV1.HTTPRequestScope{{Path: "/metrics", Methods: []string{"GET"}}},
 			Lifetime:           testExpirationDuration,
 		})
 	assert.Nil(t, rsp)
@@ -676,7 +679,7 @@ func TestGenerateTokenForGenericPermissionSet(t *testing.T) {
 			}
 			req := &v1.GenerateTokenForPermissionsAndScopeRequest{
 				PermissionSetNames: []string{permissionSetName},
-				Permissions:      map[string]v1.Access{"Image": v1.Access_READ_WRITE_ACCESS},
+				Permissions:        map[string]v1.Access{"Image": v1.Access_READ_WRITE_ACCESS},
 				ClusterScopes: []*v1.ClusterScope{{
 					ClusterId: fixtureconsts.Cluster1, Namespaces: []string{"prod"},
 				}},
