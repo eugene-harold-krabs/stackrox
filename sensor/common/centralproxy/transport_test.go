@@ -180,17 +180,17 @@ func TestProfileTokenIsBoundToConfiguredClaimsInCache(t *testing.T) {
 	var serviceClient centralv1.TokenServiceClient = client
 	provider.client.Store(&serviceClient)
 	profile := &proxyTokenProfile{
-		identity:        "system:serviceaccount:observability:reader",
-		permissionSetID: "read-only-set",
-		httpScopes:      []*apiV1.HTTPRequestScope{{Path: "/v1/metadata", Methods: []string{"GET"}}},
-		clusterScope:    FullClusterAccessScope,
+		identity:          "system:serviceaccount:observability:reader",
+		permissionSetName: "read-only-set",
+		httpScopes:        []*apiV1.HTTPRequestScope{{Path: "/v1/metadata", Methods: []string{"GET"}}},
+		clusterScope:      FullClusterAccessScope,
 	}
 	token, err := provider.getTokenForProfile(context.Background(), profile)
 	require.NoError(t, err)
 	assert.Equal(t, "profile-token", token)
 	assert.Equal(t, profile.identity, client.lastRequest.GetRequester())
 	protoassert.SlicesEqual(t, profile.httpScopes, client.lastRequest.GetHttpRequestScopes())
-	assert.Equal(t, []string{profile.permissionSetID}, client.lastRequest.GetPermissionSetIds())
+	assert.Equal(t, []string{profile.permissionSetName}, client.lastRequest.GetPermissionSetNames())
 	require.Len(t, client.lastRequest.GetClusterScopes(), 1)
 	assert.Equal(t, "sensor-cluster", client.lastRequest.GetClusterScopes()[0].GetClusterId())
 	assert.True(t, client.lastRequest.GetClusterScopes()[0].GetFullClusterAccess())
@@ -209,11 +209,11 @@ func TestProfileTokenIsBoundToConfiguredClaimsInCache(t *testing.T) {
 	require.NoError(t, err)
 	assert.EqualValues(t, 3, calls.Load())
 	other = *profile
-	other.permissionSetID = "another-read-only-set"
+	other.permissionSetName = "another-read-only-set"
 	_, err = provider.getTokenForProfile(context.Background(), &other)
 	require.NoError(t, err)
 	assert.EqualValues(t, 4, calls.Load())
-	assert.Equal(t, []string{other.permissionSetID}, client.lastRequest.GetPermissionSetIds())
+	assert.Equal(t, []string{other.permissionSetName}, client.lastRequest.GetPermissionSetNames())
 }
 
 func TestProfileTransportReplacesCallerCredentials(t *testing.T) {
@@ -232,9 +232,9 @@ func TestProfileTransportReplacesCallerCredentials(t *testing.T) {
 		tokenProvider: provider,
 	}
 	profile := &proxyTokenProfile{
-		identity:        "user:test-user",
-		permissionSetID: "read-only-set",
-		httpScopes:      []*apiV1.HTTPRequestScope{{Path: "/v1/metadata", Methods: []string{"GET"}}},
+		identity:          "user:test-user",
+		permissionSetName: "read-only-set",
+		httpScopes:        []*apiV1.HTTPRequestScope{{Path: "/v1/metadata", Methods: []string{"GET"}}},
 	}
 	req := httptest.NewRequest(http.MethodGet, "/v1/metadata", nil)
 	req.Header.Set("Authorization", "Bearer caller-kubernetes-token")

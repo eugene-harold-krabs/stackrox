@@ -49,12 +49,12 @@ type clientPolicyDocument struct {
 }
 
 type clientPolicyEntry struct {
-	AuthType        string                   `json:"authType"`
-	Subject         string                   `json:"subject"`
-	CARef           json.RawMessage          `json:"caRef,omitempty"`
-	PermissionSetID string                   `json:"permissionSetID"`
-	HTTPScopes      tokens.HTTPRequestScopes `json:"httpRequestScopes"`
-	caRef           clientPolicyCARef
+	AuthType          string                   `json:"authType"`
+	Subject           string                   `json:"subject"`
+	CARef             json.RawMessage          `json:"caRef,omitempty"`
+	PermissionSetName string                   `json:"permissionSetName"`
+	HTTPScopes        tokens.HTTPRequestScopes `json:"httpRequestScopes"`
+	caRef             clientPolicyCARef
 }
 
 type clientPolicyCARef struct {
@@ -70,7 +70,7 @@ type ClientPolicyGrant struct {
 	// AuthType and Subject identify the matched policy entry for auditing, not PoP.
 	AuthType          string
 	Subject           string
-	PermissionSetID   string
+	PermissionSetName string
 	HTTPRequestScopes []*apiV1.HTTPRequestScope
 }
 
@@ -147,13 +147,13 @@ func defaultClientPolicy() clientPolicyDocument {
 	return clientPolicyDocument{Version: clientPolicyVersion, Clients: []clientPolicyEntry{
 		{
 			AuthType: clientAuthMTLS, Subject: env.SecureMetricsClientCertCN.Setting(), CARef: caRef,
-			PermissionSetID: centralproxy.MetricsPermissionSetID,
-			HTTPScopes:      tokens.HTTPRequestScopes{"/metrics": {http.MethodGet}},
+			PermissionSetName: centralproxy.MetricsPermissionSetName,
+			HTTPScopes:        tokens.HTTPRequestScopes{"/metrics": {http.MethodGet}},
 		},
 		{
 			AuthType: clientAuthKubernetesBearer, Subject: "*",
-			PermissionSetID: centralproxy.ConsoleProxyPermissionSetID,
-			HTTPScopes:      consolePolicyHTTPScopes(),
+			PermissionSetName: centralproxy.ConsoleProxyPermissionSetName,
+			HTTPScopes:        consolePolicyHTTPScopes(),
 		},
 	}}
 }
@@ -224,7 +224,7 @@ func (p *ClientPolicy) Authorize(_ context.Context, r *http.Request, userInfo *a
 	return &ClientPolicyGrant{
 		AuthType:          matched.AuthType,
 		Subject:           subject,
-		PermissionSetID:   matched.PermissionSetID,
+		PermissionSetName: matched.PermissionSetName,
 		HTTPRequestScopes: clientPolicyScopesToProto(matched.HTTPScopes),
 	}, nil
 }
@@ -258,8 +258,8 @@ func parseClientPolicy(cm *corev1.ConfigMap) (*clientPolicyDocument, error) {
 	seen := make(map[string]struct{}, len(policy.Clients))
 	for i := range policy.Clients {
 		entry := &policy.Clients[i]
-		if entry.Subject == "" || strings.TrimSpace(entry.Subject) != entry.Subject || entry.PermissionSetID == "" ||
-			strings.TrimSpace(entry.PermissionSetID) != entry.PermissionSetID {
+		if entry.Subject == "" || strings.TrimSpace(entry.Subject) != entry.Subject ||
+			entry.PermissionSetName == "" || strings.TrimSpace(entry.PermissionSetName) != entry.PermissionSetName {
 			return nil, fmt.Errorf("invalid client identity or permission set at entry %d", i)
 		}
 		switch entry.AuthType {
@@ -277,7 +277,7 @@ func parseClientPolicy(cm *corev1.ConfigMap) (*clientPolicyDocument, error) {
 			if len(entry.CARef) != 0 {
 				return nil, fmt.Errorf("unexpected CA reference for bearer client at entry %d", i)
 			}
-			if entry.Subject == "*" && entry.PermissionSetID != centralproxy.ConsoleProxyPermissionSetID {
+			if entry.Subject == "*" && entry.PermissionSetName != centralproxy.ConsoleProxyPermissionSetName {
 				return nil, errors.New("wildcard bearer clients may only use the console permission set")
 			}
 		default:

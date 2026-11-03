@@ -44,7 +44,7 @@ func TestPolicyHandlerEnforcesIdentityAndRoutes(t *testing.T) {
 	require.NoError(t, policy.EnsureDefaults(context.Background()))
 	doc := defaultClientPolicy()
 	doc.Clients = append(doc.Clients, clientPolicyEntry{
-		AuthType: clientAuthKubernetesBearer, Subject: "test-user", PermissionSetID: "custom-read-only-set",
+		AuthType: clientAuthKubernetesBearer, Subject: "test-user", PermissionSetName: "custom-read-only-set",
 		HTTPScopes: tokens.HTTPRequestScopes{"/v1/custom": {"GET"}},
 	})
 	data, err := json.Marshal(doc)
@@ -111,7 +111,7 @@ func TestPolicyHandlerEnforcesIdentityAndRoutes(t *testing.T) {
 			assert.Equal(t, tc.wantCode == http.StatusOK, forwarded)
 			if forwarded {
 				requester = tokenClient.lastRequest.GetRequester()
-				assert.Equal(t, []string{"custom-read-only-set"}, tokenClient.lastRequest.GetPermissionSetIds())
+				assert.Equal(t, []string{"custom-read-only-set"}, tokenClient.lastRequest.GetPermissionSetNames())
 				assert.Equal(t, "sensor-cluster", tokenClient.lastRequest.GetClusterScopes()[0].GetClusterId())
 				assert.Equal(t, []string{"test-namespace"}, tokenClient.lastRequest.GetClusterScopes()[0].GetNamespaces())
 			}
@@ -130,14 +130,14 @@ func TestLegacyProxyGrantAllowed(t *testing.T) {
 		method        string
 		allowed       bool
 	}{
-		"console default": {centralproxy.ConsoleProxyPermissionSetID, "/v1/metadata", "GET", true},
-		"metrics default": {centralproxy.MetricsPermissionSetID, "/metrics", "GET", true},
+		"console default": {centralproxy.ConsoleProxyPermissionSetName, "/v1/metadata", "GET", true},
+		"metrics default": {centralproxy.MetricsPermissionSetName, "/metrics", "GET", true},
 		"generic set":     {"custom-read-only-set", "/v1/metadata", "GET", false},
-		"extra method":    {centralproxy.MetricsPermissionSetID, "/metrics", "POST", false},
-		"extra route":     {centralproxy.ConsoleProxyPermissionSetID, "/v1/private", "GET", false},
+		"extra method":    {centralproxy.MetricsPermissionSetName, "/metrics", "POST", false},
+		"extra route":     {centralproxy.ConsoleProxyPermissionSetName, "/v1/private", "GET", false},
 	} {
 		t.Run(name, func(t *testing.T) {
-			grant := &ClientPolicyGrant{PermissionSetID: tc.permissionSet,
+			grant := &ClientPolicyGrant{PermissionSetName: tc.permissionSet,
 				HTTPRequestScopes: []*apiV1.HTTPRequestScope{{Path: tc.path, Methods: []string{tc.method}}}}
 			assert.Equal(t, tc.allowed, legacyProxyGrantAllowed(grant, httptest.NewRequest(tc.method, tc.path, nil)))
 		})
@@ -193,7 +193,7 @@ func TestPolicyHandlerVerifiesDefaultMetricsClient(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.True(t, forwarded)
 	assert.Equal(t, "mtls:"+leaf.Subject.CommonName, tokenClient.lastRequest.GetRequester())
-	assert.Equal(t, []string{centralproxy.MetricsPermissionSetID}, tokenClient.lastRequest.GetPermissionSetIds())
+	assert.Equal(t, []string{centralproxy.MetricsPermissionSetName}, tokenClient.lastRequest.GetPermissionSetNames())
 	protoassert.SlicesEqual(t, []*centralv1.ClusterScope{{ClusterId: "sensor-cluster", FullClusterAccess: true}},
 		tokenClient.lastRequest.GetClusterScopes())
 	protoassert.SlicesEqual(t, []*apiV1.HTTPRequestScope{{Path: "/metrics", Methods: []string{"GET"}}},
@@ -243,10 +243,10 @@ func TestPolicyHandlerAuthenticatesServiceAccountBearerWithoutCA(t *testing.T) {
 	require.NoError(t, policy.EnsureDefaults(context.Background()))
 	doc := defaultClientPolicy()
 	doc.Clients = append(doc.Clients, clientPolicyEntry{
-		AuthType:        clientAuthKubernetesBearer,
-		Subject:         "system:serviceaccount:observability:scraper",
-		PermissionSetID: centralproxy.MetricsPermissionSetID,
-		HTTPScopes:      tokens.HTTPRequestScopes{"/metrics": {"GET"}},
+		AuthType:          clientAuthKubernetesBearer,
+		Subject:           "system:serviceaccount:observability:scraper",
+		PermissionSetName: centralproxy.MetricsPermissionSetName,
+		HTTPScopes:        tokens.HTTPRequestScopes{"/metrics": {"GET"}},
 	})
 	setClientPolicyConfigMap(t, context.Background(), client, doc)
 	waitForClientPolicy(t, policy, doc)
@@ -311,7 +311,7 @@ func TestPolicyHandlerPreservesBuiltInClientOnOlderCentral(t *testing.T) {
 
 	doc := defaultClientPolicy()
 	doc.Clients = append(doc.Clients, clientPolicyEntry{
-		AuthType: clientAuthKubernetesBearer, Subject: "test-user", PermissionSetID: "custom-read-only-set",
+		AuthType: clientAuthKubernetesBearer, Subject: "test-user", PermissionSetName: "custom-read-only-set",
 		HTTPScopes: tokens.HTTPRequestScopes{"/v1/custom": {"GET"}},
 	})
 	setClientPolicyConfigMap(t, context.Background(), client, doc)

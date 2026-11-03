@@ -13,11 +13,11 @@ type proxyTokenProfileKey struct{}
 // proxyTokenProfile is selected only after Sensor authenticates a caller and
 // checks the incoming method and path against its local client policy.
 type proxyTokenProfile struct {
-	identity        string
-	permissionSetID string
-	httpScopes      []*apiV1.HTTPRequestScope
-	clusterScope    string
-	legacyConsole   bool
+	identity          string
+	permissionSetName string
+	httpScopes        []*apiV1.HTTPRequestScope
+	clusterScope      string
+	legacyConsole     bool
 }
 
 func withProxyTokenProfile(ctx context.Context, profile *proxyTokenProfile) context.Context {

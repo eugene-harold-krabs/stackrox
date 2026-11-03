@@ -310,7 +310,7 @@ func (h *Handler) servePolicyRequest(writer http.ResponseWriter, request *http.R
 		http.Error(writer, err.Error(), pkghttputil.StatusFromError(err))
 		return
 	}
-	if grant.PermissionSetID == centralproxy.ConsoleProxyPermissionSetID && !features.OCPConsoleIntegration.Enabled() {
+	if grant.PermissionSetName == centralproxy.ConsoleProxyPermissionSetName && !features.OCPConsoleIntegration.Enabled() {
 		*result = requestResultValidationError
 		http.Error(writer, "console proxy is disabled", http.StatusForbidden)
 		return
@@ -328,12 +328,12 @@ func (h *Handler) servePolicyRequest(writer http.ResponseWriter, request *http.R
 		}
 	}
 	profile := &proxyTokenProfile{
-		identity:        grant.AuthType + ":" + grant.Subject,
-		permissionSetID: grant.PermissionSetID,
-		httpScopes:      grant.HTTPRequestScopes,
-		legacyConsole:   grant.PermissionSetID == centralproxy.ConsoleProxyPermissionSetID,
+		identity:          grant.AuthType + ":" + grant.Subject,
+		permissionSetName: grant.PermissionSetName,
+		httpScopes:        grant.HTTPRequestScopes,
+		legacyConsole:     grant.PermissionSetName == centralproxy.ConsoleProxyPermissionSetName,
 	}
-	if userInfo == nil || grant.PermissionSetID == centralproxy.MetricsPermissionSetID {
+	if userInfo == nil || grant.PermissionSetName == centralproxy.MetricsPermissionSetName {
 		profile.clusterScope = FullClusterAccessScope
 	} else {
 		profile.clusterScope = request.Header.Get(stackroxNamespaceHeader)
@@ -353,10 +353,10 @@ func (h *Handler) servePolicyRequest(writer http.ResponseWriter, request *http.R
 
 func legacyProxyGrantAllowed(grant *ClientPolicyGrant, request *http.Request) bool {
 	var allowed tokens.HTTPRequestScopes
-	switch grant.PermissionSetID {
-	case centralproxy.ConsoleProxyPermissionSetID:
+	switch grant.PermissionSetName {
+	case centralproxy.ConsoleProxyPermissionSetName:
 		allowed = centralproxy.ConsoleHTTPScopes
-	case centralproxy.MetricsPermissionSetID:
+	case centralproxy.MetricsPermissionSetName:
 		if !centralcaps.Has(centralsensor.CentralProxyPathFiltering) || !allowedpaths.IsExplicitlyAllowed("/metrics") {
 			return false
 		}

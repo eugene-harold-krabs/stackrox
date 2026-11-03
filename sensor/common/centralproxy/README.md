@@ -26,13 +26,13 @@ The default document has this shape (the actual CN and CA reference come from
         "configMap": "extension-apiserver-authentication",
         "key": "client-ca-file"
       },
-      "permissionSetID": "b3070020-ecc3-4f34-a3f6-ad28ffc9b80e",
+      "permissionSetName": "OpenShift Prometheus Metrics Reader",
       "httpRequestScopes": {"/metrics": ["GET"]}
     },
     {
       "authType": "kubernetesBearer",
       "subject": "*",
-      "permissionSetID": "b3070020-ecc3-4f34-a3f6-ad28ffc9b80b",
+      "permissionSetName": "OpenShift Secured Cluster Console Proxy",
       "httpRequestScopes": {
         "/api/graphql": ["POST"],
         "/static/ocp-plugin/": ["GET"],
@@ -68,6 +68,11 @@ lists; repeated JSON path keys are rejected rather than silently overwritten.
 An entry must have at least one path. Unsupported versions, unknown/duplicate
 JSON fields, and malformed entries reject the entire policy. Policies using the
 earlier list form must be changed to the map form before upgrading Sensor.
+Use `permissionSetName` for every policy entry. Names are resolved by Central,
+so token requests follow an administrator-managed permission set even if its ID
+differs between installations.
+If a permission set is renamed, update its `permissionSetName` in the ConfigMap;
+otherwise its proxy client cannot obtain a token.
 
 Sensor authenticates bearer clients via Kubernetes TokenReview and keeps the
 existing namespace SubjectAccessReview. Each policy entry's permission set and

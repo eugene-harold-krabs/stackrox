@@ -54,30 +54,30 @@ func TestClientPolicyBootstrapAndLiveUpdates(t *testing.T) {
 	require.Len(t, defaults.Clients, 2)
 	assert.Contains(t, cm.Data[ClientPolicyDataKey], `"httpRequestScopes":{"/metrics":["GET"]}`)
 	assert.Equal(t, env.SecureMetricsClientCertCN.Setting(), defaults.Clients[0].Subject)
-	assert.Equal(t, centralproxy.MetricsPermissionSetID, defaults.Clients[0].PermissionSetID)
+	assert.Equal(t, centralproxy.MetricsPermissionSetName, defaults.Clients[0].PermissionSetName)
 	assert.Equal(t, "*", defaults.Clients[1].Subject)
-	assert.Equal(t, centralproxy.ConsoleProxyPermissionSetID, defaults.Clients[1].PermissionSetID)
+	assert.Equal(t, centralproxy.ConsoleProxyPermissionSetName, defaults.Clients[1].PermissionSetName)
 	assert.Equal(t, centralproxy.ConsoleHTTPScopes, defaults.Clients[1].HTTPScopes)
 	grant, err := policy.Authorize(ctx, request, user)
 	require.NoError(t, err)
 	assert.Equal(t, clientAuthKubernetesBearer, grant.AuthType)
 	assert.Equal(t, "alice", grant.Subject)
-	assert.Equal(t, centralproxy.ConsoleProxyPermissionSetID, grant.PermissionSetID)
+	assert.Equal(t, centralproxy.ConsoleProxyPermissionSetName, grant.PermissionSetName)
 	protoassert.SlicesEqual(t, clientPolicyScopesToProto(defaults.Clients[1].HTTPScopes), grant.HTTPRequestScopes)
 
 	// A new exact user policy overrides the wildcard, without weakening other users.
 	defaults.Clients = append(defaults.Clients, clientPolicyEntry{
-		AuthType: clientAuthKubernetesBearer, Subject: "alice", PermissionSetID: "alice-permissions",
+		AuthType: clientAuthKubernetesBearer, Subject: "alice", PermissionSetName: "alice-permissions",
 		HTTPScopes: consolePolicyHTTPScopes(),
 	})
 	setClientPolicyConfigMap(t, ctx, client, defaults)
 	waitForClientPolicy(t, policy, defaults)
 	grant, err = policy.Authorize(ctx, request, user)
 	require.NoError(t, err)
-	assert.Equal(t, "alice-permissions", grant.PermissionSetID)
+	assert.Equal(t, "alice-permissions", grant.PermissionSetName)
 	grant, err = policy.Authorize(ctx, request, &authenticationv1.UserInfo{Username: "bob"})
 	require.NoError(t, err)
-	assert.Equal(t, centralproxy.ConsoleProxyPermissionSetID, grant.PermissionSetID)
+	assert.Equal(t, centralproxy.ConsoleProxyPermissionSetName, grant.PermissionSetName)
 	defaults.Version++
 	setClientPolicyConfigMap(t, ctx, client, defaults)
 	require.Eventually(t, func() bool { return policy.policy.Load() == nil }, time.Second, 10*time.Millisecond)
@@ -182,8 +182,8 @@ func TestClientPolicyMTLSMatchesOnlyReferencedCA(t *testing.T) {
 	require.NoError(t, err)
 	doc.Clients = append(doc.Clients, clientPolicyEntry{
 		AuthType: clientAuthMTLS, Subject: "second-client", CARef: otherRefJSON,
-		PermissionSetID: "second-permissions",
-		HTTPScopes:      doc.Clients[0].HTTPScopes,
+		PermissionSetName: "second-permissions",
+		HTTPScopes:        doc.Clients[0].HTTPScopes,
 	})
 	setClientPolicyConfigMap(t, ctx, client, doc)
 	waitForClientPolicy(t, policy, doc)
@@ -207,12 +207,12 @@ func TestClientPolicyMTLSMatchesOnlyReferencedCA(t *testing.T) {
 	}, time.Second, 10*time.Millisecond)
 	assert.Equal(t, clientAuthMTLS, grant.AuthType)
 	assert.Equal(t, env.SecureMetricsClientCertCN.Setting(), grant.Subject)
-	assert.Equal(t, centralproxy.MetricsPermissionSetID, grant.PermissionSetID)
+	assert.Equal(t, centralproxy.MetricsPermissionSetName, grant.PermissionSetName)
 	require.Eventually(t, func() bool {
 		grant, err = policy.Authorize(ctx, request(second), nil)
 		return err == nil
 	}, time.Second, 10*time.Millisecond)
-	assert.Equal(t, "second-permissions", grant.PermissionSetID)
+	assert.Equal(t, "second-permissions", grant.PermissionSetName)
 	for name, cert := range map[string]tls.Certificate{
 		"wrong CA": other, "wrong CN": wrongCN, "wrong EKU": wrongEKU, "expired": expired,
 	} {
@@ -316,8 +316,8 @@ func TestClientPolicyCacheTracksCAReferences(t *testing.T) {
 	require.NoError(t, err)
 	doc.Clients = append(doc.Clients, clientPolicyEntry{
 		AuthType: clientAuthMTLS, Subject: "another-client", CARef: refJSON,
-		PermissionSetID: centralproxy.MetricsPermissionSetID,
-		HTTPScopes:      tokens.HTTPRequestScopes{"/metrics": {http.MethodGet}},
+		PermissionSetName: centralproxy.MetricsPermissionSetName,
+		HTTPScopes:        tokens.HTTPRequestScopes{"/metrics": {http.MethodGet}},
 	})
 	setClientPolicyConfigMap(t, ctx, client, doc)
 	waitForClientPolicy(t, policy, doc)
@@ -379,16 +379,17 @@ func TestClientPolicyRejectsMalformedPolicies(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(defaults), `"httpRequestScopes":{"/metrics":["GET"]}`)
 	for name, change := range map[string]func(*clientPolicyDocument){
-		"unsupported version": func(p *clientPolicyDocument) { p.Version++ },
-		"duplicate identity":  func(p *clientPolicyDocument) { p.Clients = append(p.Clients, p.Clients[0]) },
-		"unknown auth type":   func(p *clientPolicyDocument) { p.Clients[0].AuthType = "token" },
-		"missing CA":          func(p *clientPolicyDocument) { p.Clients[0].CARef = nil },
-		"bearer CA":           func(p *clientPolicyDocument) { p.Clients[1].CARef = p.Clients[0].CARef },
-		"empty scopes":        func(p *clientPolicyDocument) { p.Clients[0].HTTPScopes = nil },
-		"empty methods":       func(p *clientPolicyDocument) { p.Clients[0].HTTPScopes["/metrics"] = nil },
-		"invalid method":      func(p *clientPolicyDocument) { p.Clients[0].HTTPScopes["/metrics"] = []string{"Get"} },
-		"duplicate method":    func(p *clientPolicyDocument) { p.Clients[0].HTTPScopes["/metrics"] = []string{"GET", "GET"} },
-		"noncanonical path":   func(p *clientPolicyDocument) { p.Clients[0].HTTPScopes["/%6detrics"] = []string{"GET"} },
+		"missing permission set": func(p *clientPolicyDocument) { p.Clients[0].PermissionSetName = "" },
+		"unsupported version":    func(p *clientPolicyDocument) { p.Version++ },
+		"duplicate identity":     func(p *clientPolicyDocument) { p.Clients = append(p.Clients, p.Clients[0]) },
+		"unknown auth type":      func(p *clientPolicyDocument) { p.Clients[0].AuthType = "token" },
+		"missing CA":             func(p *clientPolicyDocument) { p.Clients[0].CARef = nil },
+		"bearer CA":              func(p *clientPolicyDocument) { p.Clients[1].CARef = p.Clients[0].CARef },
+		"empty scopes":           func(p *clientPolicyDocument) { p.Clients[0].HTTPScopes = nil },
+		"empty methods":          func(p *clientPolicyDocument) { p.Clients[0].HTTPScopes["/metrics"] = nil },
+		"invalid method":         func(p *clientPolicyDocument) { p.Clients[0].HTTPScopes["/metrics"] = []string{"Get"} },
+		"duplicate method":       func(p *clientPolicyDocument) { p.Clients[0].HTTPScopes["/metrics"] = []string{"GET", "GET"} },
+		"noncanonical path":      func(p *clientPolicyDocument) { p.Clients[0].HTTPScopes["/%6detrics"] = []string{"GET"} },
 	} {
 		t.Run(name, func(t *testing.T) {
 			var p clientPolicyDocument
@@ -401,6 +402,8 @@ func TestClientPolicyRejectsMalformedPolicies(t *testing.T) {
 		})
 	}
 	for name, data := range map[string]string{
+		"unsupported permission set ID": strings.Replace(string(defaults), `"permissionSetName":"`+centralproxy.MetricsPermissionSetName+`"`,
+			`"permissionSetID":"b3070020-ecc3-4f34-a3f6-ad28ffc9b80e"`, 1),
 		"unknown top field":    string(defaults[:len(defaults)-1]) + `,"unrecognized":true}`,
 		"unknown nested field": strings.Replace(string(defaults), `"authType":"mtls"`, `"authType":"mtls","unrecognized":true`, 1),
 		"duplicate top key":    strings.Replace(string(defaults), `"version":1`, `"version":1,"version":1`, 1),
