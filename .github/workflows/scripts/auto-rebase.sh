@@ -7,7 +7,6 @@
 # Conflicts are logged without modifying the PR.
 #
 set -euo pipefail
-set -x # Temporary command tracing for PR validation
 
 check_not_empty GITHUB_REPOSITORY
 
