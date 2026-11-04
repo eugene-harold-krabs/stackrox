@@ -62,4 +62,8 @@ func TestIssueTokenJSON(t *testing.T) {
 		assert.Len(t, parsed.RoxClaims.InternalRoles[0].Permissions, 2)
 		assert.Equal(t, roxClaims.HTTPRequestScopes, parsed.RoxClaims.HTTPRequestScopes)
 	})
+	t.Run("empty non-nil HTTP scopes cannot be signed as unscoped", func(t *testing.T) {
+		_, err := issuer.Issue(context.Background(), RoxClaims{HTTPRequestScopes: HTTPRequestScopes{}})
+		require.ErrorContains(t, err, "HTTP request scopes must be nil or contain a path")
+	})
 }

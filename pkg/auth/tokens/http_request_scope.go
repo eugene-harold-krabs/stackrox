@@ -50,6 +50,9 @@ func HTTPRequestScopesByPath(scopes []HTTPRequestScope) HTTPRequestScopes {
 // ValidateHTTPRequestScopes checks optional path-to-method restrictions.
 // Callers must validate scopes before signing them into a token.
 func ValidateHTTPRequestScopes(scopes HTTPRequestScopes) error {
+	if scopes != nil && len(scopes) == 0 {
+		return errors.New("HTTP request scopes must be nil or contain a path")
+	}
 	if len(scopes) > 32 {
 		return fmt.Errorf("too many HTTP request scopes: %d", len(scopes))
 	}

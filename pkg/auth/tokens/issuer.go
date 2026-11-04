@@ -21,6 +21,9 @@ type issuerForSource struct {
 }
 
 func (i *issuerForSource) Issue(ctx context.Context, roxClaims RoxClaims, options ...Option) (*TokenInfo, error) {
+	if err := ValidateHTTPRequestScopes(roxClaims.HTTPRequestScopes); err != nil {
+		return nil, errors.Wrap(err, "invalid HTTP request scopes")
+	}
 	claims := i.factory.createClaims(i.source.ID(), roxClaims)
 	// issuer options may override options that were passed as arguments to this function, and issuer factory options
 	// may override both of these types of options. Hence, apply options in ascending order of priority.
