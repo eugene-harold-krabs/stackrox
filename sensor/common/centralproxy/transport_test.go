@@ -214,6 +214,20 @@ func TestProfileTokenIsBoundToConfiguredClaimsInCache(t *testing.T) {
 	require.NoError(t, err)
 	assert.EqualValues(t, 4, calls.Load())
 	assert.Equal(t, []string{other.permissionSetName}, client.lastRequest.GetPermissionSetNames())
+
+	other = *profile
+	other.clusterScope = "team-a"
+	_, err = provider.getTokenForProfile(context.Background(), &other)
+	require.NoError(t, err)
+	assert.EqualValues(t, 5, calls.Load())
+	protoassert.SlicesEqual(t, []*centralv1.ClusterScope{{ClusterId: "sensor-cluster", Namespaces: []string{"team-a"}}},
+		client.lastRequest.GetClusterScopes())
+	other.clusterScope = "team-b"
+	_, err = provider.getTokenForProfile(context.Background(), &other)
+	require.NoError(t, err)
+	assert.EqualValues(t, 6, calls.Load())
+	protoassert.SlicesEqual(t, []*centralv1.ClusterScope{{ClusterId: "sensor-cluster", Namespaces: []string{"team-b"}}},
+		client.lastRequest.GetClusterScopes())
 }
 
 func TestProfileTransportReplacesCallerCredentials(t *testing.T) {
