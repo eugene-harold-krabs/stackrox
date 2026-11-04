@@ -20,35 +20,35 @@ func TestApprovedHTTPScopes(t *testing.T) {
 		invalid       bool
 	}{
 		"console permission set without requested HTTP scopes": {
-			permissionSet: centralproxy.ConsoleProxyPermissionSetID,
+			permissionSet: centralproxy.ConsoleProxyPermissionSetName,
 			expected:      centralproxy.ConsoleHTTPScopes,
 		},
 		"console subset": {
-			permissionSet: centralproxy.ConsoleProxyPermissionSetID,
+			permissionSet: centralproxy.ConsoleProxyPermissionSetName,
 			requested:     []*apiV1.HTTPRequestScope{{Path: "/api/graphql", Methods: []string{"POST"}}},
 			expected:      tokens.HTTPRequestScopes{"/api/graphql": {"POST"}},
 		},
 		"console deny-all subset": {
-			permissionSet: centralproxy.ConsoleProxyPermissionSetID,
+			permissionSet: centralproxy.ConsoleProxyPermissionSetName,
 			requested:     []*apiV1.HTTPRequestScope{{Path: "/api/graphql"}},
 			expected:      tokens.HTTPRequestScopes{"/api/graphql": {}},
 		},
 		"future metrics profile": {
-			permissionSet: centralproxy.MetricsPermissionSetID,
+			permissionSet: centralproxy.MetricsPermissionSetName,
 			expected:      centralproxy.MetricsHTTPScopes,
 		},
 		"metrics cannot ask for console": {
-			permissionSet: centralproxy.MetricsPermissionSetID,
+			permissionSet: centralproxy.MetricsPermissionSetName,
 			requested:     []*apiV1.HTTPRequestScope{{Path: "/v1/metadata", Methods: []string{"GET"}}},
 			invalid:       true,
 		},
 		"metrics cannot ask for POST": {
-			permissionSet: centralproxy.MetricsPermissionSetID,
+			permissionSet: centralproxy.MetricsPermissionSetName,
 			requested:     []*apiV1.HTTPRequestScope{{Path: "/metrics", Methods: []string{"POST"}}},
 			invalid:       true,
 		},
 		"duplicate path": {
-			permissionSet: centralproxy.ConsoleProxyPermissionSetID,
+			permissionSet: centralproxy.ConsoleProxyPermissionSetName,
 			requested: []*apiV1.HTTPRequestScope{
 				{Path: "/api/graphql", Methods: []string{"POST"}},
 				{Path: "/api/graphql"},
@@ -56,7 +56,7 @@ func TestApprovedHTTPScopes(t *testing.T) {
 			invalid: true,
 		},
 		"wildcard path": {
-			permissionSet: centralproxy.ConsoleProxyPermissionSetID,
+			permissionSet: centralproxy.ConsoleProxyPermissionSetName,
 			requested:     []*apiV1.HTTPRequestScope{{Path: "/*", Methods: []string{"GET"}}},
 			invalid:       true,
 		},
@@ -64,8 +64,8 @@ func TestApprovedHTTPScopes(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			actual, err := approvedHTTPScopes(&v1.GenerateTokenForPermissionsAndScopeRequest{
-				PermissionSetIds:  []string{tc.permissionSet},
-				HttpRequestScopes: tc.requested,
+				PermissionSetNames: []string{tc.permissionSet},
+				HttpRequestScopes:  tc.requested,
 			})
 			if tc.invalid {
 				assert.ErrorIs(t, err, errox.InvalidArgs)
