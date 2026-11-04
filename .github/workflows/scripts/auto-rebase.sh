@@ -30,7 +30,7 @@ fi
 
 SHARED_HEADS=$(cut -f2 <<<"$PRS" | sort | uniq -d)
 
-# Rebases a single PR onto its base branch. Expects one tab-separated PR 
+# Rebases a single PR onto its base branch. Expects one tab-separated PR
 # record containing the PR number, head branch, base branch, fork status,
 # and head SHA.
 # Skips forks, shared head branches, stale refs, and conflicting rebases.
