@@ -4,8 +4,7 @@
 # fall behind, regardless of CI check status.
 #
 # PRs from forks are skipped, as the bot has no push access to them.
-# Conflicts are reported once per head commit via a PR comment instead of
-# being retried automatically on every run.
+# Conflicts are logged without modifying the PR.
 #
 set -euo pipefail
 set -x # Temporary command tracing for PR validation
@@ -59,13 +58,8 @@ rebase_pr() {
         git rebase --abort
         git checkout -
 
-        local MARKER="Auto-rebase onto \`$BASE_REF\` failed due to conflicts at commit \`$HEAD_SHA\`."
-        if gh pr view "$PR" --json comments --jq '.comments[].body' | grep -qF "$MARKER"; then
-            gh_log debug "#$PR conflict already reported for $HEAD_SHA."
-        else
-            gh pr comment "$PR" --body "$MARKER Please rebase \`$HEAD_REF\` onto \`$BASE_REF\` manually."
-            gh_summary "#$PR (\`$HEAD_REF\`) has conflicts with \`$BASE_REF\`; commented asking for a manual rebase."
-        fi
+        gh_log warning "#$PR ($HEAD_REF) has conflicts with $BASE_REF; skipping rebase."
+        gh_summary "#$PR (\`$HEAD_REF\`) has conflicts with \`$BASE_REF\`; rebase skipped."
         return
     fi
 
