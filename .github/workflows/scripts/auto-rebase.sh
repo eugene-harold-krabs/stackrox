@@ -37,9 +37,12 @@ rebase_pr() {
         return
     fi
 
-    git fetch origin \
+    if ! git fetch origin \
         "$BASE_REF:refs/remotes/origin/$BASE_REF" \
-        "$HEAD_REF:refs/remotes/origin/$HEAD_REF"
+        "$HEAD_REF:refs/remotes/origin/$HEAD_REF"; then
+        gh_log warning "#$PR could not fetch $BASE_REF or $HEAD_REF; skipping until next run."
+        return
+    fi
 
     FETCHED_SHA=$(git rev-parse "origin/$HEAD_REF")
     if [ "$FETCHED_SHA" != "$HEAD_SHA" ]; then
