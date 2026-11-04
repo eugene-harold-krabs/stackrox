@@ -6,6 +6,10 @@ import (
 	"github.com/go-jose/go-jose/v4/jwt"
 )
 
+// scopedTokenAudience makes HTTP-scoped tokens incompatible with Centrals that do not enforce HTTP scopes.
+// Older validators reject audiences that are not registered token sources.
+const scopedTokenAudience = "https://stackrox.io/jwt-sources#scoped-rox-tokens"
+
 // ExternalUserClaim represents the claim that this token identifies a user from an external identity provider.
 type ExternalUserClaim struct {
 	UserID   string `json:"user_id"`

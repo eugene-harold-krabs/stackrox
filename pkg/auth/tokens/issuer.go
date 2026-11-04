@@ -21,9 +21,6 @@ type issuerForSource struct {
 }
 
 func (i *issuerForSource) Issue(ctx context.Context, roxClaims RoxClaims, options ...Option) (*TokenInfo, error) {
-	if err := ValidateHTTPRequestScopes(roxClaims.HTTPRequestScopes); err != nil {
-		return nil, errors.Wrap(err, "invalid HTTP request scopes")
-	}
 	claims := i.factory.createClaims(i.source.ID(), roxClaims)
 	// issuer options may override options that were passed as arguments to this function, and issuer factory options
 	// may override both of these types of options. Hence, apply options in ascending order of priority.
@@ -35,6 +32,15 @@ func (i *issuerForSource) Issue(ctx context.Context, roxClaims RoxClaims, option
 	}
 	for _, opt := range i.factory.options {
 		opt.apply(claims)
+	}
+	if err := ValidateHTTPRequestScopes(claims.HTTPRequestScopes); err != nil {
+		return nil, errors.Wrap(err, "invalid HTTP request scopes")
+	}
+	if claims.HTTPRequestScopes != nil {
+		if len(claims.Audience) != 1 || claims.Audience[0] != i.source.ID() {
+			return nil, errors.New("HTTP-scoped token must have exactly one source audience")
+		}
+		claims.Audience = append(claims.Audience, scopedTokenAudience)
 	}
 	// Sanity check: the source should accept the token.
 	if err := i.source.Validate(ctx, claims); err != nil {
