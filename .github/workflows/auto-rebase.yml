@@ -2,7 +2,7 @@ name: Auto rebase
 on:
   workflow_dispatch:
   pull_request:
-    types: [labeled]  
+    types: [labeled]
   schedule:
   - cron: 00,10,20,30,40,50 * * * *
 concurrency:
