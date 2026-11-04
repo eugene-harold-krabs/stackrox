@@ -8,6 +8,7 @@
 # being retried automatically on every run.
 #
 set -euo pipefail
+set -x # Temporary command tracing for PR validation
 
 check_not_empty GITHUB_REPOSITORY
 
