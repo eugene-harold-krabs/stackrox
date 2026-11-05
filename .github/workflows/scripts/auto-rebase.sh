@@ -65,6 +65,12 @@ rebase_pr() {
         return
     fi
 
+    MERGES=$(git rev-list --merges "origin/$BASE_REF..origin/$HEAD_REF")
+    if [ -n "$MERGES" ]; then
+        gh_log warning "#$PR contains merge commits; plain rebase can drop their changes. Skipping."
+        return
+    fi
+
     git checkout -B "$HEAD_REF" "origin/$HEAD_REF"
 
     if ! git rebase "origin/$BASE_REF"; then
